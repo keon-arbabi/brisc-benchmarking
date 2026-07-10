@@ -16,6 +16,7 @@ DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_DE = sys.argv[4]
+REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
 
@@ -41,7 +42,7 @@ if __name__ == '__main__':
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
         csv_columns={'library': 'scanpy', 'test': 'de',
-                     'dataset': DATA_NAME})
+                     'dataset': DATA_NAME, 'rep': REP})
 
     with timers('Load data'):
         data_sc = sc.read_h5ad(DATA_PATH)
@@ -65,17 +66,16 @@ if __name__ == '__main__':
             .drop_duplicates('sample').set_index('sample')
         for col in sample_cols:
             data_pb.obs[col] = data_pb.obs['sample'].map(sample_meta[col])
-        data_pb.obs['psbulk_cells'] = \
-            data_pb.obs['n_obs_aggregated'].astype(int)
+        data_pb.obs['psbulk_cells'] = data_pb.obs['n_obs_aggregated']
         data_pb.obs['psbulk_counts'] = np.asarray(
             data_pb.X.sum(axis=1)).ravel()
+        data_pb.obs['log2_psbulk_cells'] = np.log2(
+            data_pb.obs['psbulk_cells'])
+        data_pb.obs['log2_psbulk_counts'] = np.log2(
+            data_pb.obs['psbulk_counts'])
+        data_pb = data_pb[data_pb.obs['cond'].notna()].copy()
 
     del data_sc; gc.collect()
-
-    data_pb = data_pb[data_pb.obs['cond'].notna()].copy()
-
-    data_pb.obs['log2_psbulk_cells'] = np.log2(data_pb.obs['psbulk_cells'])
-    data_pb.obs['log2_psbulk_counts'] = np.log2(data_pb.obs['psbulk_counts'])
 
     # z-score so exp(Xb) in IRLS doesn't overflow
     for col in ('age_at_death', 'pmi',

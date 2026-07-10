@@ -22,13 +22,12 @@ grp <- list(
     "brisc (single-threaded)",
     "brisc (multi-threaded)"),
   colors = c(
-    "brisc (multi-threaded)" = "#e16032",
+    "brisc (multi-threaded)"  = "#e16032",
     "brisc (single-threaded)" = "#f38d70",
-    "brisc (CPU)" = "#e16032",
-    "brisc (multi-threaded, CPU)" = "#e16032",
-    "Scanpy" = "#269d69",
-    "Seurat + BPCells" = "#1c8ca8",
-    "rapids-singlecell" = "#7058be",
+    "brisc (CPU)"             = "#e16032",
+    "Scanpy"                  = "#269d69",
+    "Seurat + BPCells"        = "#1c8ca8",
+    "rapids-singlecell"       = "#7058be",
     "rapids-singlecell (GPU)" = "#7058be"))
 
 grp_gpu <- c("rapids-singlecell (GPU)", "brisc (CPU)")
@@ -249,12 +248,11 @@ compute_steps <- function(d, ref_group) {
            .by = c(operation, workflow, dataset))
 }
 
+gpu_rename <- c("rapids-singlecell"      = "rapids-singlecell (GPU)",
+                "brisc (multi-threaded)" = "brisc (CPU)")
 prepared_gpu <- prepared %>%
-  filter(group %in% c("rapids-singlecell", "brisc (multi-threaded)")) %>%
-  mutate(group = recode(as.character(group),
-                        "rapids-singlecell" = "rapids-singlecell (GPU)",
-                        "brisc (multi-threaded)" = "brisc (CPU)") %>%
-           factor(levels = grp_gpu))
+  filter(group %in% names(gpu_rename)) %>%
+  mutate(group = factor(gpu_rename[as.character(group)], levels = grp_gpu))
 
 steps_main <- compute_steps(prepared_main, "brisc (multi-threaded)")
 steps_gpu  <- compute_steps(prepared_gpu,  "brisc (CPU)")
@@ -354,13 +352,14 @@ build_step_fig <- function(wf, steps_df, group_order, ref_label,
             plot.margin = margin(0, if (is_last) 4 else 0, 2, -1))
   }
 
+  panels <- list()
+  for (j in seq_along(datasets)) {
+    panels[[paste0("title", j)]] <- make_title(datasets[j])
+    panels[[paste0("t", j)]] <- make_t(j)
+    if (include_memory) panels[[paste0("m", j)]] <- make_m(j)
+  }
+
   if (include_memory) {
-    panels <- list()
-    for (j in seq_along(datasets)) {
-      panels[[paste0("title", j)]] <- make_title(datasets[j])
-      panels[[paste0("t", j)]] <- make_t(j)
-      panels[[paste0("m", j)]] <- make_m(j)
-    }
     design <- "AABBCC\nDEFGHI"
     layout <- list(
       A = panels$title1, B = panels$title2, C = panels$title3,
@@ -369,11 +368,6 @@ build_step_fig <- function(wf, steps_df, group_order, ref_label,
       H = panels$t3, I = panels$m3)
     widths <- c(4, 1.3, 4, 1.3, 4, 1.3)
   } else {
-    panels <- list()
-    for (j in seq_along(datasets)) {
-      panels[[paste0("title", j)]] <- make_title(datasets[j])
-      panels[[paste0("t", j)]] <- make_t(j)
-    }
     design <- "ABC\nDEF"
     layout <- list(
       A = panels$title1, B = panels$title2, C = panels$title3,
@@ -425,18 +419,15 @@ lib_display <- c(
   brisc = "brisc", scanpy = "Scanpy",
   seurat = "Seurat + BPCells", rapids = "rapids-singlecell")
 
-panel_spec <- tibble(
-  lib    = c("brisc", "brisc", "brisc", "brisc",
-             "scanpy", "seurat", "rapids"),
-  method = c("PaCMAP", "LocalMAP", "UMAP", "UMAP (hogwild)",
-             "UMAP", "UMAP", "UMAP"),
-  col1 = c("pacmap_1", "localmap_1", "umap_1", "umap_hogwild_1",
-           "embed_1", "embed_1", "embed_1"),
-  col2 = c("pacmap_2", "localmap_2", "umap_2", "umap_hogwild_2",
-           "embed_2", "embed_2", "embed_2"),
-  op = c("Embedding (PaCMAP)", "Embedding (LocalMAP)",
-         "Embedding (UMAP)", "Embedding (UMAP hogwild)",
-         "Embedding", "Embedding", "Embedding"))
+panel_spec <- tribble(
+  ~lib,     ~method,          ~col1,            ~col2,            ~op,
+  "brisc",  "PaCMAP",         "pacmap_1",       "pacmap_2",       "Embedding (PaCMAP)",
+  "brisc",  "LocalMAP",       "localmap_1",     "localmap_2",     "Embedding (LocalMAP)",
+  "brisc",  "UMAP",           "umap_1",         "umap_2",         "Embedding (UMAP)",
+  "brisc",  "UMAP (hogwild)", "umap_hogwild_1", "umap_hogwild_2", "Embedding (UMAP hogwild)",
+  "scanpy", "UMAP",           "embed_1",        "embed_2",        "Embedding",
+  "seurat", "UMAP",           "embed_1",        "embed_2",        "Embedding",
+  "rapids", "UMAP",           "embed_1",        "embed_2",        "Embedding")
 
 get_embed_time <- function(lib_val, op_val, ds_val) {
   t <- results %>%
@@ -478,13 +469,12 @@ for (ds in datasets) {
 
   panel_info <- spec %>%
     mutate(panel_key = paste0(lib, "_", method),
-           duration = pmap_dbl(list(lib, op),
-                               \(l, o) get_embed_time(l, o, ds)),
-           label = paste0(lib_display[lib], " (", method,
-                          if_else(!is.na(duration),
-                                  paste0(", ", fmt_time(duration)),
-                                  ""),
-                          ")"))
+           duration = map2_dbl(lib, op, get_embed_time, ds),
+           label = paste0(
+             lib_display[lib], " (", method,
+             if_else(is.na(duration), "",
+                     paste0(", ", fmt_time(duration))),
+             ")"))
 
   embed_data <- embed_data %>%
     mutate(panel_label = factor(panel_key,
@@ -644,40 +634,75 @@ for (ds in datasets) {
          p, width = w, height = h, device = agg_png)
 }
 
-knn_order <- c("Seurat + BPCells", "Scanpy", "brisc", "rapids-singlecell")
+# --- Clustering quality figures ---------------------------------------------
+# kNN recall and Leiden cluster ARI vs ground-truth labels.
+
 knn_colors <- c(
-  "Seurat + BPCells" = "#1c8ca8",
+  "Seurat + BPCells"  = "#1c8ca8",
   "Scanpy"            = "#269d69",
   "brisc"             = "#e16032",
   "rapids-singlecell" = "#7058be")
+knn_order <- names(knn_colors)
+method_to_group <- c(seurat = "Seurat + BPCells", scanpy = "Scanpy",
+                     brisc = "brisc", rapids = "rapids-singlecell")
 
-knn_data <- fread(file.path(work_dir, "output", "knn_recall_summary.csv")) %>%
-  as_tibble() %>%
-  mutate(
-    dataset = factor(dataset, datasets),
-    group = case_when(
-      method == "brisc" ~ "brisc",
-      method == "scanpy" ~ "Scanpy",
-      method == "seurat" ~ "Seurat + BPCells",
-      method == "rapids" ~ "rapids-singlecell") %>%
-      factor(levels = knn_order))
+knn_path <- file.path(work_dir, "output", "knn_recall_summary.csv")
+if (file.exists(knn_path)) {
+  knn_data <- fread(knn_path) %>%
+    as_tibble() %>%
+    mutate(dataset = factor(dataset, datasets),
+           group = factor(method_to_group[method], levels = knn_order))
 
-plot_knn <- ggplot(knn_data, aes(mean, group, fill = group)) +
-  geom_col(width = 0.7) +
-  geom_text(aes(label = sprintf("%.3f", mean)),
-            hjust = -0.15, size = 2.5, na.rm = TRUE) +
-  facet_wrap(~ dataset, nrow = 1,
-             labeller = as_labeller(ds_lab)) +
-  scale_x_continuous(limits = c(0, 1.15),
-                     expand = expansion(mult = c(0, 0))) +
-  scale_y_discrete(drop = FALSE) +
-  scale_fill_manual(values = knn_colors, guide = "none") +
-  labs(x = "Mean kNN recall (vs exact kNN)", y = NULL) +
-  base_theme +
-  theme(axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        strip.background = element_blank(),
-        strip.text = element_text(size = 10))
+  plot_knn <- ggplot(knn_data, aes(mean, group, fill = group)) +
+    geom_col(width = 0.7) +
+    geom_text(aes(label = sprintf("%.3f", mean)),
+              hjust = -0.15, size = 2.5, na.rm = TRUE) +
+    facet_wrap(~ dataset, nrow = 1, labeller = as_labeller(ds_lab)) +
+    scale_x_continuous(limits = c(0, 1.15),
+                       expand = expansion(mult = c(0, 0))) +
+    scale_y_discrete(drop = FALSE) +
+    scale_fill_manual(values = knn_colors, guide = "none") +
+    labs(x = "Mean kNN recall (vs exact kNN)", y = NULL) +
+    base_theme +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_text(size = 10))
 
-ggsave(file.path(work_dir, "figures", "fig_knn_recall.png"),
-       plot_knn, width = 11, height = 2.5, device = agg_png)
+  ggsave(file.path(work_dir, "figures", "fig_knn_recall.png"),
+         plot_knn, width = 11, height = 2.5, device = agg_png)
+}
+
+ari_path <- file.path(work_dir, "output", "cluster_ari_summary.csv")
+if (file.exists(ari_path)) {
+  ari_data <- fread(ari_path) %>%
+    as_tibble() %>%
+    mutate(
+      dataset = factor(dataset, datasets),
+      group = factor(method_to_group[method], levels = knn_order),
+      label = factor(label, c("cell_type_broad", "cell_type"),
+                     labels = c("Broad cell type", "Fine cell type")))
+
+  plot_ari <- ggplot(ari_data,
+                     aes(resolution, balanced_ari, color = group)) +
+    geom_errorbar(aes(ymin = balanced_ari - balanced_ari_std,
+                      ymax = balanced_ari + balanced_ari_std),
+                  width = 0.04, linewidth = 0.4) +
+    geom_line(linewidth = 0.5) +
+    geom_point(size = 1.6) +
+    facet_grid(label ~ dataset, labeller = labeller(dataset = ds_lab)) +
+    scale_color_manual(values = knn_colors, limits = knn_order, name = NULL) +
+    scale_x_continuous(breaks = c(0.25, 0.5, 1, 1.5, 2)) +
+    scale_y_continuous(limits = c(0, 1),
+                       expand = expansion(mult = c(0, 0.02))) +
+    labs(x = "Leiden resolution",
+         y = "Balanced ARI vs ground-truth cell types") +
+    base_theme +
+    theme(strip.background = element_blank(),
+          strip.text = element_text(size = 10),
+          legend.position = "right",
+          panel.grid.major.y = element_line(color = "grey92"))
+
+  ggsave(file.path(work_dir, "figures", "fig_cluster_ari.png"),
+         plot_ari, width = 11, height = 5, device = agg_png)
+}

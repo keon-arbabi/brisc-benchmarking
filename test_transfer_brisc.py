@@ -1,9 +1,8 @@
 import gc
 import sys
 from pathlib import Path
-sys.path.append(f'{Path.home()}')
 sys.path.append(f'{Path.home()}/sc-benchmarking')
-from single_cell import SingleCell
+from brisc import SingleCell
 from utils_local import MemoryTimer, system_info, transfer_accuracy
 
 DATA_NAME = sys.argv[1]
@@ -11,6 +10,8 @@ DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_ACC = sys.argv[5]
+OUTPUT_PATH_LABELS = sys.argv[6]
+REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
 
@@ -23,13 +24,14 @@ if __name__ == '__main__':
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
         csv_columns={'library': 'brisc', 'test': 'transfer',
-                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
+                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS,
+                     'rep': REP})
 
     with timers('Load data'):
         data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
     with timers('Quality control'):
-        data = data.qc(subset=False, allow_float=True)
+        data = data.qc(allow_float=True)
 
     with timers('Split data'):
         data_query, data_ref = data.split_by_obs('is_ref').values()
@@ -51,13 +53,19 @@ if __name__ == '__main__':
     with timers('Transfer labels'):
         data_ref, data_query = data_ref.harmonize(data_query)
         data_query = data_query.label_transfer_from(
-            data_ref, cell_type_col,
+            data_ref,
+            cell_type_col,
             cell_type_column='cell_type_transferred')
 
     print('--- Transfer Accuracy ---')
     transfer_accuracy(
         data_query.obs, cell_type_col, 'cell_type_transferred')\
     .write_csv(OUTPUT_PATH_ACC)
+
+    data_query.obs\
+        .select(['cell_id', cell_type_col, 'cell_type_transferred'])\
+        .rename({cell_type_col: 'cell_type'})\
+        .write_csv(OUTPUT_PATH_LABELS)
 
     timers.shutdown()
     print('--- Completed successfully ---')

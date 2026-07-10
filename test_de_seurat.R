@@ -12,6 +12,7 @@ DATA_NAME <- args[1]
 DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
 OUTPUT_PATH_DE <- args[4]
+REP <- as.integer(args[length(args)])
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "de", paste0("data_", DATA_NAME))
@@ -24,7 +25,8 @@ cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
 timers <- MemoryTimer(
   silent = FALSE, csv_path = OUTPUT_PATH_TIME,
-  csv_columns = list(library = "seurat", test = "de", dataset = DATA_NAME))
+  csv_columns = list(library = "seurat", test = "de",
+                     dataset = DATA_NAME, rep = REP))
 
 # BPCells native functions required:
 # Loading from h5ad and writing to disk
@@ -78,8 +80,9 @@ timers$with_timer("Pseudobulk", {
   cell_groups <- do.call(paste, c(data@meta.data[group_cols], sep = "_"))
   pb_mat <- GetAssayData(data, layer = "counts")
   pb_mat <- pseudobulk_matrix(pb_mat, cell_groups, method = "sum")
-  pb_meta <- data@meta.data[!duplicated(cell_groups), ]
-  rownames(pb_meta) <- cell_groups[!duplicated(cell_groups)]
+  first <- !duplicated(cell_groups)
+  pb_meta <- data@meta.data[first, ]
+  rownames(pb_meta) <- cell_groups[first]
   pb_meta <- pb_meta[colnames(pb_mat), ]
   data <- CreateSeuratObject(
     counts = as(pb_mat, "dgCMatrix"), meta.data = pb_meta)

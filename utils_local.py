@@ -415,6 +415,15 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
         except NameError:
             pass
 
+def remove_self_neighbors(neighbors):
+    # Drop each cell's self-neighbor (value == row index); keep all if none.
+    n, m = neighbors.shape
+    drop = neighbors == np.arange(n)[:, None]
+    if not drop.any():
+        return neighbors
+    drop[~drop.any(axis=1), -1] = True
+    return neighbors[~drop].reshape(n, m - 1)
+
 def transfer_accuracy(obs, orig_col, trans_col):
     if isinstance(obs, pd.DataFrame):
         obs = pl.from_pandas(obs)

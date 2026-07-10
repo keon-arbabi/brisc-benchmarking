@@ -11,6 +11,8 @@ DATA_NAME <- args[1]
 DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
 OUTPUT_PATH_ACC <- args[4]
+OUTPUT_PATH_LABELS <- args[5]
+REP <- as.integer(args[length(args)])
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "transfer", paste0("data_", DATA_NAME))
@@ -25,7 +27,7 @@ cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 timers <- MemoryTimer(
   silent = FALSE, csv_path = OUTPUT_PATH_TIME,
   csv_columns = list(library = "seurat", test = "transfer",
-                     dataset = DATA_NAME))
+                     dataset = DATA_NAME, rep = REP))
 
 # BPCells native functions required:
 # Loading from h5ad and writing to disk
@@ -90,6 +92,13 @@ timers$with_timer("Transfer labels", {
 accuracy_df <- transfer_accuracy(
   data_query@meta.data, cell_type_col, "predicted.id")
 write.csv(accuracy_df, OUTPUT_PATH_ACC, row.names = FALSE)
+
+labels_df <- data.frame(
+  cell_id = colnames(data_query),
+  cell_type = data_query@meta.data[[cell_type_col]],
+  cell_type_transferred = data_query@meta.data[["predicted.id"]]
+)
+write.csv(labels_df, OUTPUT_PATH_LABELS, row.names = FALSE)
 
 timers$shutdown()
 cat("--- Completed successfully ---\n")

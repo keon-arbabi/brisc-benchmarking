@@ -2,20 +2,19 @@ import os
 import sys
 import polars as pl
 from pathlib import Path
-sys.path.append(f'{Path.home()}')
 sys.path.append(f'{Path.home()}/sc-benchmarking')
-from single_cell import SingleCell
-from utils_local import MemoryTimer, system_info
+from brisc import SingleCell
+from utils_local import MemoryTimer, system_info, remove_self_neighbors
 
 GPU = os.uname().nodename.startswith('trig')
 DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
-SINGLE_THREADED = NUM_THREADS == 1
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_EMBEDDING = sys.argv[5]
 OUTPUT_PATH_PCS = sys.argv[6]
 OUTPUT_PATH_NEIGHBORS = sys.argv[7]
+REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
 
@@ -28,13 +27,14 @@ if __name__ == '__main__':
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
         csv_columns={'library': 'brisc', 'test': 'basic',
-                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
+                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS,
+                     'rep': REP})
 
     with timers('Load data'):
         data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
     with timers('Quality control'):
-        data = data.qc(subset=False, allow_float=True)
+        data = data.qc(allow_float=True)
 
     # Rapids has degraded performance with hvg batch, match no batch
     with timers('Feature selection'):
@@ -59,7 +59,7 @@ if __name__ == '__main__':
         with timers('Embedding (LocalMAP)', exclude=True):
             data = data.localmap()
 
-    if not GPU and not SINGLE_THREADED:
+    if not GPU and NUM_THREADS != 1:
         with timers('Embedding (UMAP)', exclude=True):
             data = data.umap()
 
@@ -70,22 +70,23 @@ if __name__ == '__main__':
     with timers('Find markers'):
         markers = data.find_markers('cell_type')
 
-    data = data.filter_obs(pl.col('passed_QC'))
+    data = data.drop_X()
+    data = data.filter_obs('passed_QC')
 
     # Save PCs
     pcs = data.obsm['pca']
     pc_df = pl.DataFrame({
         f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
     })
-    pc_df.write_csv(OUTPUT_PATH_PCS)
+    pc_df.write_parquet(OUTPUT_PATH_PCS)
 
     # Save neighbors
-    neighbors = data.obsm['neighbors']
+    neighbors = remove_self_neighbors(data.obsm['neighbors'])
     neighbors_df = pl.DataFrame({
         f'neighbor_{i+1}': neighbors[:, i]
         for i in range(neighbors.shape[1])
     })
-    neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
+    neighbors_df.write_parquet(OUTPUT_PATH_NEIGHBORS)
 
     # Save embeddings
     ct_col = 'cell_type_fine' if DATA_NAME == 'PanSci' else 'cell_type'

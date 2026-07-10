@@ -1,6 +1,7 @@
 import gc
 import sys
 import scanpy as sc
+import polars as pl
 from pathlib import Path
 sys.path.append(f'{Path.home()}/sc-benchmarking')
 from utils_local import MemoryTimer, system_info, transfer_accuracy
@@ -9,6 +10,8 @@ DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_ACC = sys.argv[4]
+OUTPUT_PATH_LABELS = sys.argv[5]
+REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
 
@@ -20,7 +23,7 @@ if __name__ == '__main__':
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
         csv_columns={'library': 'scanpy', 'test': 'transfer',
-                     'dataset': DATA_NAME})
+                     'dataset': DATA_NAME, 'rep': REP})
 
     with timers('Load data'):
         data = sc.read_h5ad(DATA_PATH)
@@ -51,7 +54,7 @@ if __name__ == '__main__':
     with timers('Feature selection'):
         sc.pp.highly_variable_genes(
             data_ref, n_top_genes=2000, batch_key='donor')
-        hvg_genes = data_ref.var[data_ref.var['highly_variable']].index
+        hvg_genes = data_ref.var_names[data_ref.var['highly_variable']]
         data_ref = data_ref[:, hvg_genes].copy()
         data_query = data_query[:, hvg_genes].copy()
 
@@ -73,6 +76,12 @@ if __name__ == '__main__':
     transfer_accuracy(
         data_query.obs, 'cell_type_orig', cell_type_col)\
     .write_csv(OUTPUT_PATH_ACC)
+
+    pl.DataFrame({
+        'cell_id': data_query.obs_names.tolist(),
+        'cell_type': data_query.obs['cell_type_orig'].tolist(),
+        'cell_type_transferred': data_query.obs[cell_type_col].tolist(),
+    }).write_csv(OUTPUT_PATH_LABELS)
 
     timers.shutdown()
     print('--- Completed successfully ---')

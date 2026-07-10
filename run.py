@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import argparse
 import os
 import sys
@@ -29,6 +29,7 @@ DATASETS = {
     for name in DATASET_NAMES
 }
 THREADS = [-1, 1]
+N_REPS = 3
 # (file, tool, task, thread_params, gpu)
 SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', THREADS, False),
@@ -57,12 +58,24 @@ SHORT = {
 OUTPUTS = {
     'basic': ['embedding', 'pcs', 'neighbors'],
     'de': ['de'],
-    'transfer': ['accuracy'],
+    'transfer': ['accuracy', 'labels'],
     'commands': [],
 }
 
-def out(job_name, suffix):
-    return os.path.join(OUTPUT_DIR, f'{job_name}_{suffix}.csv')
+_OUTPUT_EXT = {'pcs': 'parquet', 'neighbors': 'parquet'}
+
+def out(job_name, suffix, rep):
+    ext = _OUTPUT_EXT.get(suffix, 'csv')
+    return os.path.join(
+        OUTPUT_DIR, f'rep{rep}', f'{job_name}_{suffix}.{ext}')
+
+def _job_name(head, dataset, threads, gpu, gpu_tag):
+    parts = [head, dataset]
+    if threads is not None:
+        parts.append(str(threads))
+    if gpu:
+        parts.append(gpu_tag)
+    return '_'.join(parts)
 
 def _slurm_job_pending_or_running(job_name):
     try:
@@ -85,41 +98,39 @@ def run_jobs(scripts):
 
         for d_name, d_path in DATASETS.items():
             for threads in (thread_params or [None]):
-                parts = [f'{task}_{tool}', d_name]
-                if threads is not None:
-                    parts.append(str(threads))
-                if gpu:
-                    parts.append('gpu')
-                job_name = '_'.join(parts)
+                for rep in range(1, N_REPS + 1):
+                    job_name = _job_name(
+                        f'{task}_{tool}', d_name, threads, gpu, 'gpu')
 
-                log = os.path.join(LOG_DIR, f'{job_name}.log')
-                if os.path.exists(log):
-                    with open(log) as f:
-                        if 'Completed successfully' in f.read():
-                            print(f'Skipping completed job: {job_name}')
-                            continue
+                    log = os.path.join(
+                        LOG_DIR, f'rep{rep}', f'{job_name}.log')
+                    if os.path.exists(log):
+                        with open(log) as f:
+                            if 'Completed successfully' in f.read():
+                                print(f'Skipping completed job: '
+                                      f'{job_name} rep{rep}')
+                                continue
 
-                short_parts = [SHORT[task] + SHORT[tool], SHORT[d_name]]
-                if threads is not None:
-                    short_parts.append(str(threads))
-                if gpu:
-                    short_parts.append('g')
-                slurm_name = '_'.join(short_parts)
+                    slurm_name = _job_name(
+                        SHORT[task] + SHORT[tool], SHORT[d_name],
+                        threads, gpu, 'g') + f'_r{rep}'
 
-                if _slurm_job_pending_or_running(slurm_name):
-                    print(f'Skipping in-progress job: {job_name}')
-                    continue
+                    if _slurm_job_pending_or_running(slurm_name):
+                        print(f'Skipping in-progress job: '
+                              f'{job_name} rep{rep}')
+                        continue
 
-                cmd = [interpreter, script_path, d_name, d_path]
-                if threads is not None:
-                    cmd.append(str(threads))
-                cmd.append(out(job_name, 'timer'))
-                cmd.extend(out(job_name, s) for s in OUTPUTS[task])
+                    cmd = [interpreter, script_path, d_name, d_path]
+                    if threads is not None:
+                        cmd.append(str(threads))
+                    cmd.append(out(job_name, 'timer', rep))
+                    cmd.extend(out(job_name, s, rep) for s in OUTPUTS[task])
+                    cmd.append(str(rep))
 
-                run_slurm(
-                    ' '.join(cmd),
-                    account='def-wainberg' if gpu else 'rrg-shreejoy',
-                    job_name=slurm_name, log_file=log, hours=24)
+                    run_slurm(
+                        ' '.join(cmd),
+                        account='def-wainberg',
+                        job_name=slurm_name, log_file=log, hours=24)
 
 def filter_scripts_and_datasets(filters):
     tools = {t for _, t, _, _, _ in SCRIPTS}
@@ -156,12 +167,15 @@ if __name__ == '__main__':
         help='Any combination of tool/task/dataset names to filter jobs')
     parser.add_argument('--log-dir', default=LOG_DIR)
     parser.add_argument('--output-dir', default=OUTPUT_DIR)
+    parser.add_argument('--reps', type=int, default=N_REPS)
     args = parser.parse_args()
 
     LOG_DIR = args.log_dir
     OUTPUT_DIR = args.output_dir
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.makedirs(LOG_DIR, exist_ok=True)
+    N_REPS = args.reps
+    for rep in range(1, N_REPS + 1):
+        os.makedirs(os.path.join(OUTPUT_DIR, f'rep{rep}'), exist_ok=True)
+        os.makedirs(os.path.join(LOG_DIR, f'rep{rep}'), exist_ok=True)
     os.makedirs(FIGURES_DIR, exist_ok=True)
 
     is_gpu = os.environ.get('CLUSTER') == 'trillium-gpu'

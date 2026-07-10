@@ -3,15 +3,15 @@ import sys
 from pathlib import Path
 import numpy as np
 import polars as pl
-sys.path.append(f'{Path.home()}')
 sys.path.append(f'{Path.home()}/sc-benchmarking')
-from single_cell import SingleCell, concat_obs
+from brisc import SingleCell, concat_obs
 from utils_local import MemoryTimer, system_info
 
 DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
+REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
 
@@ -24,11 +24,12 @@ if __name__ == '__main__':
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME, summary_unit='ms',
         csv_columns={'library': 'brisc', 'test': 'commands',
-                    'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
+                    'dataset': DATA_NAME, 'num_threads': NUM_THREADS,
+                    'rep': REP})
 
     # Setup
     data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)\
-        .qc(subset=False, allow_float=True)\
+        .qc(allow_float=True)\
         .hvg(batch_column='donor')\
         .normalize()
 

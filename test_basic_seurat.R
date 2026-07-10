@@ -14,6 +14,7 @@ OUTPUT_PATH_TIME <- ARGS[3]
 OUTPUT_PATH_EMBEDDING <- ARGS[4]
 OUTPUT_PATH_PCS <- ARGS[5]
 OUTPUT_PATH_NEIGHBORS <- ARGS[6]
+REP <- as.integer(ARGS[length(ARGS)])
 
 system_info()
 cat("--- Params ---\n")
@@ -22,7 +23,8 @@ cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
 timers <- MemoryTimer(
   silent = FALSE, csv_path = OUTPUT_PATH_TIME,
-  csv_columns = list(library = "seurat", test = "basic", dataset = DATA_NAME))
+  csv_columns = list(library = "seurat", test = "basic",
+                     dataset = DATA_NAME, rep = REP))
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "basic", paste0("data_", DATA_NAME))
@@ -105,13 +107,13 @@ timers$with_timer("Find markers", {
 # Save PCs
 pc_df <- as.data.frame(pca)
 colnames(pc_df) <- paste0("PC_", seq_len(ncol(pca)))
-write.csv(pc_df, OUTPUT_PATH_PCS, row.names = FALSE)
+arrow::write_parquet(pc_df, OUTPUT_PATH_PCS)
 
 # Save neighbors
-knn_idx <- knn$idx[, -1, drop = FALSE] - 1L
+knn_idx <- remove_self_neighbors(knn$idx) - 1L
 neighbors_df <- as.data.frame(knn_idx)
 colnames(neighbors_df) <- paste0("neighbor_", seq_len(ncol(knn_idx)))
-write.csv(neighbors_df, OUTPUT_PATH_NEIGHBORS, row.names = FALSE)
+arrow::write_parquet(neighbors_df, OUTPUT_PATH_NEIGHBORS)
 
 # Save embeddings
 ct_col <- if (DATA_NAME == "PanSci") "cell_type_fine" else "cell_type"

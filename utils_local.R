@@ -126,8 +126,11 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
       if (inherits(error_obj, "error")) {
         stop(error_obj)
       } else {
-        # interrupt or other non-error condition
-        signalCondition(error_obj)
+        # Interrupt (e.g. SLURM TERM->INT): the finally block already flushed
+        # the timer CSV. signalCondition() is a silent no-op with no outer
+        # handler, which would let later steps run on partial state, so halt
+        # the whole job with a non-zero status (matching Python's behavior).
+        quit(save = "no", status = 1L, runLast = TRUE)
       }
     }
 
@@ -458,6 +461,15 @@ read_h5ad_obs <- function(path) {
   return(obs_df)
 }
 
+remove_self_neighbors <- function(idx) {
+  # Drop each cell's self-neighbor (value == row index); keep all if none.
+  n <- nrow(idx); m <- ncol(idx)
+  drop <- idx == seq_len(n)
+  if (!any(drop)) return(idx)
+  drop[rowSums(drop) == 0, m] <- TRUE
+  matrix(t(idx)[t(!drop)], nrow = n, ncol = m - 1L, byrow = TRUE)
+}
+
 transfer_accuracy <- function(obs_df, orig_col, trans_col) {
   accuracy_df <- obs_df %>%
     mutate(
@@ -465,7 +477,9 @@ transfer_accuracy <- function(obs_df, orig_col, trans_col) {
       trans = as.character(.data[[trans_col]])) %>%
     group_by(orig) %>%
     summarize(
-      n_correct = sum(orig == trans),
+      # na.rm matches Python (a null/NA prediction counts as incorrect but is
+      # still in n_total) and prevents one NA from blanking the whole Total row
+      n_correct = sum(orig == trans, na.rm = TRUE),
       n_total = n(),
       .groups = "drop") %>%
     bind_rows(

@@ -9,73 +9,60 @@ OUTPUT_DIR = f'{Path.home()}/sc-benchmarking/output'
 DATASETS = ['SEAAD', 'Parse', 'PanSci']
 LIBRARIES = {
     'brisc': {
-        'pcs': 'basic_brisc_{dataset}_-1_pcs.csv',
-        'neighbors': 'basic_brisc_{dataset}_-1_neighbors.csv',
+        'pcs': 'basic_brisc_{dataset}_-1_pcs.parquet',
+        'neighbors': 'basic_brisc_{dataset}_-1_neighbors.parquet',
     },
     'scanpy': {
-        'pcs': 'basic_scanpy_{dataset}_pcs.csv',
-        'neighbors': 'basic_scanpy_{dataset}_neighbors.csv',
+        'pcs': 'basic_scanpy_{dataset}_pcs.parquet',
+        'neighbors': 'basic_scanpy_{dataset}_neighbors.parquet',
     },
     'seurat': {
-        'pcs': 'basic_seurat_{dataset}_pcs.csv',
-        'neighbors': 'basic_seurat_{dataset}_neighbors.csv',
+        'pcs': 'basic_seurat_{dataset}_pcs.parquet',
+        'neighbors': 'basic_seurat_{dataset}_neighbors.parquet',
     },
     'rapids': {
-        'pcs': 'basic_rapids_{dataset}_gpu_pcs.csv',
-        'neighbors': 'basic_rapids_{dataset}_gpu_neighbors.csv',
+        'pcs': 'basic_rapids_{dataset}_gpu_pcs.parquet',
+        'neighbors': 'basic_rapids_{dataset}_gpu_neighbors.parquet',
     },
 }
 
-K = 20
+REP = 1  # score only the first replicate's outputs
+K = 14   # test the top-14 nearest (min neighbors across libraries: rapids=14)
 BATCH_SIZE = 500_000
-MAX_QUERIES = None
 
 def log(msg):
     print(msg, flush=True)
 
-def exact_knn(PCs, k=20, batch_size=100_000, max_queries=None, seed=0):
+def exact_knn(PCs, k=20, batch_size=100_000):
+    # Exact k nearest neighbors (GPU brute force), self excluded.
     n, d = PCs.shape
     assert PCs.dtype == np.float32 and PCs.flags['C_CONTIGUOUS']
     if hasattr(faiss, 'omp_set_num_threads'):
         faiss.omp_set_num_threads(os.cpu_count())
     res = faiss.StandardGpuResources()
-    cpu_index = faiss.IndexFlatL2(d)
-    index = faiss.index_cpu_to_gpu(res, 0, cpu_index)
+    index = faiss.index_cpu_to_gpu(res, 0, faiss.IndexFlatL2(d))
     index.add(PCs)
 
-    if max_queries is not None and n > max_queries:
-        rng = np.random.default_rng(seed)
-        query_idx = np.sort(rng.choice(n, size=max_queries, replace=False))
-        queries = PCs[query_idx]
-        nq = max_queries
-    else:
-        query_idx = None
-        queries = PCs
-        nq = n
-
-    all_I = np.empty((nq, k + 1), dtype=np.int64)
+    all_I = np.empty((n, k + 1), dtype=np.int64)
     t0 = time.time()
+    for s in range(0, n, batch_size):
+        e = min(s + batch_size, n)
+        _, all_I[s:e] = index.search(PCs[s:e], k + 1)
+        log(f'  {e:,}/{n:,} ({time.time() - t0:.0f}s)')
 
-    for b in range((nq + batch_size - 1) // batch_size):
-        s = b * batch_size
-        e = min(s + batch_size, nq)
-        _, all_I[s:e] = index.search(queries[s:e], k + 1)
-        log(f'  {e:,}/{nq:,} ({time.time() - t0:.0f}s)')
-
-    expected = query_idx if query_idx is not None \
-        else np.arange(nq, dtype=np.int64)
-    self_mask = all_I == expected[:, None]
+    # Drop self from each row; flag rows where self was not found.
+    self_mask = all_I == np.arange(n)[:, None]
     valid = self_mask.any(axis=1)
     n_missing = int((~valid).sum())
     if n_missing:
-        log(f'  WARN: {n_missing:,}/{nq:,} queries missing self in top-{k+1} '
+        log(f'  WARN: {n_missing:,}/{n:,} queries missing self in top-{k+1} '
             f'(excluded from recall)')
-    drop = self_mask.argmax(axis=1)
-    keep = np.ones((nq, k + 1), dtype=bool)
-    keep[np.arange(nq), drop] = False
-    return all_I[keep].reshape(nq, k).astype(np.uint32), query_idx, valid
+    keep = np.ones((n, k + 1), dtype=bool)
+    keep[np.arange(n), self_mask.argmax(axis=1)] = False
+    return all_I[keep].reshape(n, k).astype(np.uint32), valid
 
 def recall_at_k(gt, approx):
+    # Fraction of exact neighbors recovered per cell (approx ties deduplicated).
     n, k = gt.shape
     assert approx.shape == (n, k)
     gt_s = np.sort(gt, axis=1)
@@ -95,78 +82,91 @@ def recall_at_k(gt, approx):
 all_summary_rows = []
 
 for dataset_name in DATASETS:
+    dataset_cells = {}
     for lib_name, paths in LIBRARIES.items():
+        tag = f'[{dataset_name}/{lib_name}]'
+        rep_dir = os.path.join(OUTPUT_DIR, f'rep{REP}')
         pc_path = os.path.join(
-            OUTPUT_DIR, paths['pcs'].format(dataset=dataset_name))
+            rep_dir, paths['pcs'].format(dataset=dataset_name))
         nn_path = os.path.join(
-            OUTPUT_DIR, paths['neighbors'].format(dataset=dataset_name))
+            rep_dir, paths['neighbors'].format(dataset=dataset_name))
 
         if not os.path.exists(pc_path):
-            log(f'[{dataset_name}/{lib_name}] PCs not found: {pc_path}')
+            log(f'{tag} PCs not found: {pc_path}')
             continue
         if not os.path.exists(nn_path):
-            log(f'[{dataset_name}/{lib_name}] Neighbors not found: {nn_path}')
+            log(f'{tag} Neighbors not found: {nn_path}')
             continue
 
-        log(f'[{dataset_name}/{lib_name}] Loading approximate neighbors...')
-        approx_neighbors = pl.read_csv(nn_path).to_numpy().astype(np.uint32)
-        k_lib = approx_neighbors.shape[1]
+        log(f'{tag} Loading approximate neighbors...')
+        approx_neighbors = pl.read_parquet(nn_path).to_numpy().astype(np.uint32)
+        if approx_neighbors.shape[1] < K:
+            log(f'{tag} only {approx_neighbors.shape[1]} neighbors (< K={K}); '
+                f'skipping')
+            continue
+        # neighbors are distance-sorted, so the first K are the nearest K
+        approx_neighbors = approx_neighbors[:, :K]
 
         gt_cache = os.path.join(
             OUTPUT_DIR, f'knn_exact_{lib_name}_{dataset_name}.npz')
         if os.path.exists(gt_cache):
-            log(f'[{dataset_name}/{lib_name}] Loading cached exact KNN...')
+            log(f'{tag} Loading cached exact KNN...')
             cached = np.load(gt_cache)
-            gt_neighbors = cached['gt_neighbors']
-            query_idx = cached['query_idx'] \
-                if 'query_idx' in cached.files else None
-            valid = cached['valid'] if 'valid' in cached.files \
-                else np.ones(gt_neighbors.shape[0], dtype=bool)
+            gt_neighbors, valid = cached['gt_neighbors'], cached['valid']
         else:
-            log(f'[{dataset_name}/{lib_name}] Loading PCs...')
-            PCs = pl.read_csv(pc_path).to_numpy()
-            PCs = np.ascontiguousarray(PCs, dtype=np.float32)
-
-            log(f'[{dataset_name}/{lib_name}] Computing exact KNN '
+            log(f'{tag} Loading PCs...')
+            PCs = np.ascontiguousarray(
+                pl.read_parquet(pc_path).to_numpy(), dtype=np.float32)
+            log(f'{tag} Computing exact KNN '
                 f'({PCs.shape[0]:,} cells x {PCs.shape[1]} PCs)...')
-            gt_neighbors, query_idx, valid = exact_knn(
-                PCs, k=K, batch_size=BATCH_SIZE, max_queries=MAX_QUERIES)
+            gt_neighbors, valid = exact_knn(PCs, k=K, batch_size=BATCH_SIZE)
+            np.savez(gt_cache, gt_neighbors=gt_neighbors, valid=valid)
 
-            saved = {'gt_neighbors': gt_neighbors, 'valid': valid}
-            if query_idx is not None:
-                saved['query_idx'] = query_idx
-            np.savez(gt_cache, **saved)
-
-        gt_k = gt_neighbors[:, :k_lib]
-        if query_idx is not None:
-            approx_neighbors = approx_neighbors[query_idx]
-
+        gt_k = gt_neighbors[:, :K]
         n_invalid = int((~valid).sum())
         if n_invalid:
-            log(f'[{dataset_name}/{lib_name}] Excluding {n_invalid:,}/'
-                f'{valid.shape[0]:,} rows with missing self from recall')
+            log(f'{tag} Excluding {n_invalid:,}/{valid.shape[0]:,} '
+                f'rows with missing self from recall')
             gt_k = gt_k[valid]
             approx_neighbors = approx_neighbors[valid]
 
-        log(f'[{dataset_name}/{lib_name}] Computing recall@{k_lib}...')
+        log(f'{tag} Computing recall@{K}...')
         rc = recall_at_k(gt_k, approx_neighbors)
+
+        # full-length per-cell recall (NaN for cells excluded above), so all
+        # libraries share one positionally-aligned per-dataset table
+        rc_full = np.full(valid.shape[0], np.nan, dtype=np.float32)
+        rc_full[valid] = rc
+        dataset_cells[lib_name] = rc_full
 
         rc_path = os.path.join(
             OUTPUT_DIR, f'knn_recall_{lib_name}_{dataset_name}.csv')
         pl.DataFrame({'recall': rc}).write_csv(rc_path)
-        log(f'[{dataset_name}/{lib_name}] Saved per-cell recall to {rc_path}')
+        log(f'{tag} Saved per-cell recall to {rc_path}')
 
         all_summary_rows.append(dict(
             method=lib_name,
             dataset=dataset_name,
-            k=k_lib,
+            k=K,
             mean=float(rc.mean()),
             min=float(rc.min()),
             p5=float(np.quantile(rc, 0.05)),
             p25=float(np.quantile(rc, 0.25))))
 
-        log(f'[{dataset_name}/{lib_name}] Recall@{k_lib}: '
-            f'mean={rc.mean():.4f}, min={rc.min():.4f}')
+        log(f'{tag} Recall@{K}: mean={rc.mean():.4f}, min={rc.min():.4f}')
+
+    # Cache every cell's recall for this dataset, one column per library
+    if dataset_cells:
+        lens = {k: len(v) for k, v in dataset_cells.items()}
+        if len(set(lens.values())) == 1:
+            cells_path = os.path.join(
+                OUTPUT_DIR, f'knn_recall_cells_{dataset_name}.parquet')
+            pl.DataFrame(dataset_cells).write_parquet(cells_path)
+            log(f'[{dataset_name}] Saved per-cell recall for '
+                f'{len(dataset_cells)} libraries to {cells_path}')
+        else:
+            log(f'[{dataset_name}] cell counts differ across libraries '
+                f'{lens}; skipping consolidated per-cell recall file')
 
 if all_summary_rows:
     pl.DataFrame(all_summary_rows)\

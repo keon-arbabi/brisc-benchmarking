@@ -34,19 +34,27 @@ except (FileNotFoundError, subprocess.TimeoutExpired):
 
 running = []
 failed = []
-for log_file in os.listdir(LOG_DIR):
-    if not log_file.endswith('.log'):
+for rep_dir in sorted(os.listdir(LOG_DIR)):
+    rep_path = os.path.join(LOG_DIR, rep_dir)
+    if not (rep_dir.startswith('rep') and os.path.isdir(rep_path)):
         continue
-    job_name = log_file[:-4]
-    with open(os.path.join(LOG_DIR, log_file)) as f:
-        content = f.read()
-    if 'Completed successfully' in content:
-        continue
-    short = slurm_short_name(job_name)
-    if short and short in running_names:
-        running.append(job_name)
-    elif content.strip():
-        failed.append(job_name)
+    rep = rep_dir[3:]
+    for log_file in os.listdir(rep_path):
+        if not log_file.endswith('.log'):
+            continue
+        job_name = log_file[:-4]
+        with open(os.path.join(rep_path, log_file)) as f:
+            content = f.read()
+        if 'Completed successfully' in content:
+            continue
+        short = slurm_short_name(job_name)
+        if short:
+            short = f'{short}_r{rep}'
+        label = f'{job_name} rep{rep}'
+        if short and short in running_names:
+            running.append(label)
+        elif content.strip():
+            failed.append(label)
 
 for label, jobs in [('Running', running), ('Failed', failed)]:
     if jobs:

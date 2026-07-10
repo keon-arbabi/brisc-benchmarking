@@ -9,6 +9,7 @@ from utils_local import MemoryTimer, system_info
 DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
+REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
 
@@ -20,7 +21,7 @@ if __name__ == '__main__':
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME, summary_unit='ms',
         csv_columns={'library': 'scanpy', 'test': 'commands',
-                     'dataset': DATA_NAME})
+                     'dataset': DATA_NAME, 'rep': REP})
 
     # Setup
     data = sc.read_h5ad(DATA_PATH)

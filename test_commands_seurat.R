@@ -9,6 +9,7 @@ ARGS <- commandArgs(trailingOnly=TRUE)
 DATA_NAME <- ARGS[1]
 DATA_PATH <- ARGS[2]
 OUTPUT_PATH_TIME <- ARGS[3]
+REP <- as.integer(ARGS[length(ARGS)])
 
 system_info()
 cat("--- Params ---\n")
@@ -18,7 +19,7 @@ cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 timers <- MemoryTimer(
   silent = FALSE, csv_path = OUTPUT_PATH_TIME, summary_unit = "ms",
   csv_columns = list(library = "seurat", test = "commands",
-                     dataset = DATA_NAME))
+                     dataset = DATA_NAME, rep = REP))
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "manipulation", paste0("data_", DATA_NAME))

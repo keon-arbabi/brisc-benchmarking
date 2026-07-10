@@ -4,9 +4,8 @@ import sys
 from pathlib import Path
 import polars as pl
 _HOME_DIR = Path.home()
-sys.path.append(f'{_HOME_DIR}')
 sys.path.append(f'{_HOME_DIR}/sc-benchmarking')
-from single_cell import SingleCell
+from brisc import SingleCell
 from utils_local import run
 
 # SEAAD
@@ -110,8 +109,8 @@ column       value
 '''
 
 sc.save(f'{dir_data}/SEAAD_raw.h5ad', overwrite=True)
-sc.subsample_obs(n=50000, by_column='cell_type', QC_column=None)\
-    .save(f'{dir_data}/SEAAD_raw_50K.h5ad', overwrite=True)
+sc.subsample_obs(n=5000, by_column='cell_type', QC_column=None)\
+    .save(f'{dir_data}/SEAAD_raw_5K.h5ad', overwrite=True)
 
 del sc; gc.collect()
 

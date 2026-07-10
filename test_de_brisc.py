@@ -2,9 +2,8 @@ import gc
 import sys
 from pathlib import Path
 import polars as pl
-sys.path.append(f'{Path.home()}')
 sys.path.append(f'{Path.home()}/sc-benchmarking')
-from single_cell import SingleCell
+from brisc import SingleCell
 from utils_local import MemoryTimer, system_info
 
 DATA_NAME = sys.argv[1]
@@ -12,6 +11,7 @@ DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_DE = sys.argv[5]
+REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
 
@@ -25,33 +25,31 @@ if __name__ == '__main__':
         formula = '~ 0 + cond + apoe4_dosage + sex + age_at_death + pmi + ' \
             'log2(num_cells) + log2(library_size)'
         contrasts = {'AD_vs_Control': '`condAD` - `condControl`'}
-        categorical_columns = ['cond']
     elif DATA_NAME == 'Parse':
         formula = '~ 0 + cond + donor + log2(num_cells) + log2(library_size)'
         contrasts = {'IFN-gamma_vs_PBS': '`condIFN-gamma` - `condPBS`'}
-        categorical_columns = ['donor', 'cond']
     elif DATA_NAME == 'PanSci':
         formula = '~ 0 + cond + sex + log2(num_cells) + log2(library_size)'
         contrasts = {'Aged_vs_Young': '`condAged` - `condYoung`'}
-        categorical_columns = ['cond', 'sex']
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
         csv_columns={'library': 'brisc', 'test': 'de',
-                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
+                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS,
+                     'rep': REP})
 
     with timers('Load data'):
         data_sc = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
     with timers('Quality control'):
-        data_sc = data_sc.qc(subset=False, allow_float=True)
+        data_sc = data_sc.qc(
+            custom_filter=pl.col('cond').is_not_null(),
+            allow_float=True)
 
     with timers('Pseudobulk'):
         data_pb = data_sc.pseudobulk('sample', 'cell_type')
 
     del data_sc; gc.collect()
-
-    data_pb = data_pb.filter_obs(pl.col('cond').is_not_null())
 
     with timers('Quality control'):
         data_pb = data_pb.qc('cond', verbose=False)
@@ -59,10 +57,8 @@ if __name__ == '__main__':
     with timers('Differential expression'):
         de = data_pb\
             .library_size()\
-            .DE(formula,
+            .de(formula,
                 contrasts=contrasts,
-                group='cond',
-                categorical_columns=categorical_columns,
                 verbose=False)
 
     de_df = de.table\

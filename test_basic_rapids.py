@@ -8,7 +8,7 @@ import polars as pl
 import anndata as ad
 from pathlib import Path
 sys.path.append(f'{Path.home()}/sc-benchmarking')
-from utils_local import MemoryTimer, system_info
+from utils_local import MemoryTimer, system_info, remove_self_neighbors
 
 os.environ.setdefault('CUPY_CACHE_DIR', '/tmp/cupy_cache')
 os.environ.setdefault('CUDA_PATH', os.path.join(
@@ -24,6 +24,7 @@ OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_EMBEDDING = sys.argv[4]
 OUTPUT_PATH_PCS = sys.argv[5]
 OUTPUT_PATH_NEIGHBORS = sys.argv[6]
+REP = int(sys.argv[-1])
 
 CHUNK_SIZE = 20_000
 
@@ -51,7 +52,7 @@ if __name__ == '__main__':
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
         csv_columns={'library': 'rapids', 'test': 'basic',
-                     'dataset': DATA_NAME})
+                     'dataset': DATA_NAME, 'rep': REP})
 
     with timers('Load data'):
         f = h5py.File(DATA_PATH, 'r')
@@ -125,17 +126,16 @@ if __name__ == '__main__':
     pc_df = pl.DataFrame({
         f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
     })
-    pc_df.write_csv(OUTPUT_PATH_PCS)
+    pc_df.write_parquet(OUTPUT_PATH_PCS)
 
     dist = data.obsp['distances']
-    n_neighbors = dist.indptr[1] - dist.indptr[0] - 1
-    neighbors = dist.indices.reshape(
-        data.n_obs, -1)[:, 1:].astype(np.uint32)
+    neighbors = remove_self_neighbors(
+        dist.indices.reshape(data.n_obs, -1)).astype(np.uint32)
     neighbors_df = pl.DataFrame({
         f'neighbor_{i+1}': neighbors[:, i]
-        for i in range(n_neighbors)
+        for i in range(neighbors.shape[1])
     })
-    neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
+    neighbors_df.write_parquet(OUTPUT_PATH_NEIGHBORS)
 
     ct_col = 'cell_type_fine' if DATA_NAME == 'PanSci' else 'cell_type'
     embedding_df = pl.DataFrame({
