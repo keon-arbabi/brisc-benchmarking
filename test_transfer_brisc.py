@@ -1,7 +1,7 @@
 import gc
 import sys
 from pathlib import Path
-sys.path.append(f'{Path.home()}/sc-benchmarking')
+sys.path.append(f'{Path.home()}/brisc-benchmarking')
 from brisc import SingleCell
 from utils_local import MemoryTimer, system_info, transfer_accuracy
 

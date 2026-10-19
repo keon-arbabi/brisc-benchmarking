@@ -1,7 +1,7 @@
 import os
 import subprocess
 from pathlib import Path
-LOG_DIR = f'{Path.home()}/sc-benchmarking/logs'
+LOG_DIR = f'{Path.home()}/brisc-benchmarking/logs'
 
 SHORT = {
     'basic': 'ba', 'de': 'de', 'transfer': 'tr', 'commands': 'cm',

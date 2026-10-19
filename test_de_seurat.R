@@ -5,7 +5,7 @@ suppressPackageStartupMessages({
 })
 
 options(future.globals.maxSize = Inf)
-source(file.path(path.expand("~"), "sc-benchmarking", "utils_local.R"))
+source(file.path(path.expand("~"), "brisc-benchmarking", "utils_local.R"))
 
 args = commandArgs(trailingOnly=TRUE)
 DATA_NAME <- args[1]
@@ -15,7 +15,8 @@ OUTPUT_PATH_DE <- args[4]
 REP <- as.integer(args[length(args)])
 
 bpcells_dir <- file.path(
-  Sys.getenv("SCRATCH"), "bpcells", "de", paste0("data_", DATA_NAME))
+  Sys.getenv("SCRATCH"), "bpcells", "de",
+  paste0("data_", DATA_NAME, "_rep", REP))
 unlink(bpcells_dir, recursive = TRUE)
 
 system_info()
@@ -51,20 +52,18 @@ timers$with_timer("Quality control", {
     data, vars = grep("^malat1$", rownames(data),
     ignore.case = TRUE, value = TRUE))[, 1]
   data <- subset(
-    data, subset = nFeature_RNA >= 100 & percent.mt <= 5 & malat1 > 0,
+    data, subset = nFeature_RNA >= 100 & percent.mt <= 5 & malat1 > 0 &
+      !is.na(cond),
     slot = "counts")
 })
 
 if (DATA_NAME == "SEAAD") {
-  data <- subset(data, subset = !is.na(cond))
   group_cols <- c("cond", "sample", "cell_type")
   ident_pairs <- list(test = "AD", ref = "Control")
 } else if (DATA_NAME == "Parse") {
-  data <- subset(data, subset = cytokine %in% c("IFN-gamma", "PBS"))
   group_cols <- c("cytokine", "sample", "cell_type")
   ident_pairs <- list(test = "IFN-gamma", ref = "PBS")
 } else if (DATA_NAME == "PanSci") {
-  data <- subset(data, subset = !is.na(cond))
   group_cols <- c("cond", "sample", "cell_type")
   ident_pairs <- list(test = "Aged", ref = "Young")
 }

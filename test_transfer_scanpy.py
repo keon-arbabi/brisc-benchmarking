@@ -3,7 +3,7 @@ import sys
 import scanpy as sc
 import polars as pl
 from pathlib import Path
-sys.path.append(f'{Path.home()}/sc-benchmarking')
+sys.path.append(f'{Path.home()}/brisc-benchmarking')
 from utils_local import MemoryTimer, system_info, transfer_accuracy
 
 DATA_NAME = sys.argv[1]

@@ -9,7 +9,7 @@ from formulaic import Formula
 from pydeseq2.ds import DeseqStats
 from pydeseq2.dds import DeseqDataSet, DefaultInference
 from pathlib import Path
-sys.path.append(f'{Path.home()}/sc-benchmarking')
+sys.path.append(f'{Path.home()}/brisc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
 DATA_NAME = sys.argv[1]
@@ -55,7 +55,8 @@ if __name__ == '__main__':
             percent_top=None, log1p=False, inplace=True)
         keep = ((data_sc.obs['n_genes_by_counts'].values >= 100) &
                 (data_sc.obs['pct_counts_mt'].values <= 5) &
-                (data_sc.obs['pct_counts_malat1'].values > 0))
+                (data_sc.obs['pct_counts_malat1'].values > 0) &
+                (data_sc.obs['cond'].notna().values))
         data_sc = data_sc[keep].copy()
 
     with timers('Pseudobulk'):
@@ -73,7 +74,6 @@ if __name__ == '__main__':
             data_pb.obs['psbulk_cells'])
         data_pb.obs['log2_psbulk_counts'] = np.log2(
             data_pb.obs['psbulk_counts'])
-        data_pb = data_pb[data_pb.obs['cond'].notna()].copy()
 
     del data_sc; gc.collect()
 

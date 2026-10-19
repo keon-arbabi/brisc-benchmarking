@@ -5,7 +5,7 @@ suppressPackageStartupMessages({
 })
 
 options(future.globals.maxSize = Inf)
-source(file.path(path.expand("~"), "sc-benchmarking", "utils_local.R"))
+source(file.path(path.expand("~"), "brisc-benchmarking", "utils_local.R"))
 
 ARGS <- commandArgs(trailingOnly=TRUE)
 DATA_NAME <- ARGS[1]
@@ -14,6 +14,8 @@ OUTPUT_PATH_TIME <- ARGS[3]
 OUTPUT_PATH_EMBEDDING <- ARGS[4]
 OUTPUT_PATH_PCS <- ARGS[5]
 OUTPUT_PATH_NEIGHBORS <- ARGS[6]
+OUTPUT_PATH_HVGS <- ARGS[7]
+OUTPUT_PATH_MARKERS <- ARGS[8]
 REP <- as.integer(ARGS[length(ARGS)])
 
 system_info()
@@ -27,7 +29,8 @@ timers <- MemoryTimer(
                      dataset = DATA_NAME, rep = REP))
 
 bpcells_dir <- file.path(
-  Sys.getenv("SCRATCH"), "bpcells", "basic", paste0("data_", DATA_NAME))
+  Sys.getenv("SCRATCH"), "bpcells", "basic",
+  paste0("data_", DATA_NAME, "_rep", REP))
 unlink(bpcells_dir, recursive = TRUE)
 
 # BPCells native functions required:
@@ -103,6 +106,18 @@ timers$with_timer("Embedding", {
 timers$with_timer("Find markers", {
   markers <- FindAllMarkers(data, group.by = "cell_type", only.pos = TRUE)
 })
+
+# Save markers
+markers_df <- data.frame(
+  cell_type = as.character(markers$cluster), gene = markers$gene,
+  rank = ave(seq_len(nrow(markers)), markers$cluster, FUN = seq_along),
+  logFC = markers$avg_log2FC, pct_in = markers$pct.1, pct_out = markers$pct.2,
+  p_value = markers$p_val, p_value_adj = markers$p_val_adj)
+arrow::write_parquet(markers_df, OUTPUT_PATH_MARKERS)
+
+# Save HVGs
+write.csv(data.frame(gene = VariableFeatures(data)), OUTPUT_PATH_HVGS,
+          row.names = FALSE)
 
 # Save PCs
 pc_df <- as.data.frame(pca)

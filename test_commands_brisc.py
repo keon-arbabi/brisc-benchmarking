@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 import numpy as np
 import polars as pl
-sys.path.append(f'{Path.home()}/sc-benchmarking')
+sys.path.append(f'{Path.home()}/brisc-benchmarking')
 from brisc import SingleCell, concat_obs
 from utils_local import MemoryTimer, system_info
 

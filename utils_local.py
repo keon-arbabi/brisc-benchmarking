@@ -327,6 +327,11 @@ def system_info():
     print(f'CPU Cores Allocated: {cpu_cores}', flush=True)
     print(f'Memory Allocated: {mem_gb}', flush=True)
     print(f'Python Version: {sys.version}', flush=True)
+    try:
+        from importlib.metadata import version
+        print(f'brisc Version: {version("brisc")}', flush=True)
+    except ImportError:
+        pass
 
     gpu_info = 'N/A'
     try:
@@ -395,6 +400,7 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'
                 f'export OMP_PLACES=cores\n'
                 f'export OMP_PROC_BIND=spread\n'
+                f'export NUMBA_NUM_THREADS=${{SLURM_CPUS_ON_NODE:-$(nproc)}}\n'
                 f'export HDF5_USE_FILE_LOCKING=FALSE\n'
                 f'set -m\n'
                 f'{cmd} &\n'
@@ -441,34 +447,3 @@ def transfer_accuracy(obs, orig_col, trans_col):
         .rename({orig_col: 'cell_type'})
     print_df(df)
     return df
-
-def confusion_matrix_plot(sc_obs, orig_col, trans_col, filename):
-    cm = pd.crosstab(
-        sc_obs[orig_col].to_pandas(),
-        sc_obs[trans_col].to_pandas()
-    )
-    with pd.option_context('display.max_columns', None):
-        print(cm)
-
-    norm_cm = cm.div(cm.sum(axis=1), axis=0).fillna(0)
-
-    height = 6 + norm_cm.shape[0] * 0.05
-    width = 8 + norm_cm.shape[1] * 0.05
-
-    plt.figure(figsize=(width, height))
-    ax = sns.heatmap(
-        norm_cm, square=False, linewidths=0.5,
-        cmap='rocket_r', vmin=0, vmax=1,
-        cbar_kws={'shrink': 0.7}
-    )
-    cbar = ax.collections[0].colorbar
-    cbar.set_ticks([0, 0.2, 0.4, 0.6, 0.8, 1])
-    cbar.set_ticklabels(['0%', '20%', '40%', '60%', '80%', '100%'])
-
-    plt.xticks(rotation=90)
-    plt.yticks(rotation=0)
-    ax.set_xlabel(f'Predicted: {trans_col}')
-    ax.set_ylabel(f'Original: {orig_col}')
-    plt.tight_layout()
-    plt.savefig(filename, dpi=300)
-    plt.show()

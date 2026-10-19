@@ -3,7 +3,7 @@ suppressPackageStartupMessages({
   library(Seurat)
 })
 
-source(file.path(path.expand("~"), "sc-benchmarking", "utils_local.R"))
+source(file.path(path.expand("~"), "brisc-benchmarking", "utils_local.R"))
 
 ARGS <- commandArgs(trailingOnly=TRUE)
 DATA_NAME <- ARGS[1]
@@ -22,7 +22,8 @@ timers <- MemoryTimer(
                      dataset = DATA_NAME, rep = REP))
 
 bpcells_dir <- file.path(
-  Sys.getenv("SCRATCH"), "bpcells", "manipulation", paste0("data_", DATA_NAME))
+  Sys.getenv("SCRATCH"), "bpcells", "manipulation",
+  paste0("data_", DATA_NAME, "_rep", REP))
 unlink(bpcells_dir, recursive = TRUE)
 
 # Setup

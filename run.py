@@ -5,11 +5,11 @@ import sys
 import subprocess
 from pathlib import Path
 _HOME_DIR = Path.home()
-sys.path.append(f'{_HOME_DIR}/sc-benchmarking')
+sys.path.append(f'{_HOME_DIR}/brisc-benchmarking')
 from utils_local import run_slurm
 
 DATA_DIR = f'{_HOME_DIR}/single-cell'
-WORK_DIR = f'{_HOME_DIR}/sc-benchmarking'
+WORK_DIR = f'{_HOME_DIR}/brisc-benchmarking'
 
 OUTPUT_DIR = os.path.join(WORK_DIR, 'output')
 LOG_DIR = os.path.join(WORK_DIR, 'logs')
@@ -30,6 +30,7 @@ DATASETS = {
 }
 THREADS = [-1, 1]
 N_REPS = 3
+
 # (file, tool, task, thread_params, gpu)
 SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', THREADS, False),
@@ -56,13 +57,14 @@ SHORT = {
     'SEAAD': 'SE', 'Parse': 'PA', 'PanSci': 'PS',
 }
 OUTPUTS = {
-    'basic': ['embedding', 'pcs', 'neighbors'],
+    'basic': ['embedding', 'pcs', 'neighbors', 'hvgs', 'markers'],
     'de': ['de'],
     'transfer': ['accuracy', 'labels'],
     'commands': [],
 }
 
-_OUTPUT_EXT = {'pcs': 'parquet', 'neighbors': 'parquet'}
+_OUTPUT_EXT = {'pcs': 'parquet', 'neighbors': 'parquet',
+               'markers': 'parquet'}
 
 def out(job_name, suffix, rep):
     ext = _OUTPUT_EXT.get(suffix, 'csv')

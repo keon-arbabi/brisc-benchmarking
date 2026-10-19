@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 import polars as pl
 _HOME_DIR = Path.home()
-sys.path.append(f'{_HOME_DIR}/sc-benchmarking')
+sys.path.append(f'{_HOME_DIR}/brisc-benchmarking')
 from brisc import SingleCell
 from utils_local import run
 

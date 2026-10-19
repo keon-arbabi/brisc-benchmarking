@@ -3,7 +3,7 @@ import numpy as np
 import polars as pl
 import scanpy as sc
 from pathlib import Path
-sys.path.append(f'{Path.home()}/sc-benchmarking')
+sys.path.append(f'{Path.home()}/brisc-benchmarking')
 from utils_local import MemoryTimer, system_info, remove_self_neighbors
 
 import warnings
@@ -16,6 +16,8 @@ OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_EMBEDDING = sys.argv[4]
 OUTPUT_PATH_PCS = sys.argv[5]
 OUTPUT_PATH_NEIGHBORS = sys.argv[6]
+OUTPUT_PATH_HVGS = sys.argv[7]
+OUTPUT_PATH_MARKERS = sys.argv[8]
 REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
@@ -72,6 +74,21 @@ if __name__ == '__main__':
 
     with timers('Find markers'):
         sc.tl.rank_genes_groups(data, groupby='cell_type')
+
+    # Save markers
+    pl.from_pandas(sc.get.rank_genes_groups_df(data, group=None))\
+        .rename({'group': 'cell_type', 'names': 'gene', 'scores': 'score',
+                 'logfoldchanges': 'logFC', 'pvals': 'p_value',
+                 'pvals_adj': 'p_value_adj'})\
+        .with_columns(rank=pl.int_range(1, pl.len() + 1).over('cell_type'))\
+        .select('cell_type', 'gene', 'rank', 'score', 'logFC', 'p_value',
+                'p_value_adj')\
+        .write_parquet(OUTPUT_PATH_MARKERS)
+
+    # Save HVGs
+    pl.DataFrame({
+        'gene': data.var_names[data.var['highly_variable'].values].tolist()
+    }).write_csv(OUTPUT_PATH_HVGS)
 
     # Save PCs
     pcs = data.obsm['X_pca']

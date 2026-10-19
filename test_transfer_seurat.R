@@ -4,7 +4,7 @@ suppressPackageStartupMessages({
 })
 
 options(future.globals.maxSize = Inf)
-source(file.path(path.expand("~"), "sc-benchmarking", "utils_local.R"))
+source(file.path(path.expand("~"), "brisc-benchmarking", "utils_local.R"))
 
 args = commandArgs(trailingOnly=TRUE)
 DATA_NAME <- args[1]
@@ -15,7 +15,8 @@ OUTPUT_PATH_LABELS <- args[5]
 REP <- as.integer(args[length(args)])
 
 bpcells_dir <- file.path(
-  Sys.getenv("SCRATCH"), "bpcells", "transfer", paste0("data_", DATA_NAME))
+  Sys.getenv("SCRATCH"), "bpcells", "transfer",
+  paste0("data_", DATA_NAME, "_rep", REP))
 unlink(bpcells_dir, recursive = TRUE)
 
 system_info()

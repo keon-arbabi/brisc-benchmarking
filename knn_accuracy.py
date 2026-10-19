@@ -5,7 +5,7 @@ import numpy as np
 import polars as pl
 from pathlib import Path
 
-OUTPUT_DIR = f'{Path.home()}/sc-benchmarking/output'
+OUTPUT_DIR = f'{Path.home()}/brisc-benchmarking/output'
 DATASETS = ['SEAAD', 'Parse', 'PanSci']
 LIBRARIES = {
     'brisc': {
@@ -30,8 +30,14 @@ REP = 1  # score only the first replicate's outputs
 K = 14   # test the top-14 nearest (min neighbors across libraries: rapids=14)
 BATCH_SIZE = 500_000
 
+TAIL_FRAC = 0.25
+
 def log(msg):
     print(msg, flush=True)
+
+def tail_mean(rc, frac=TAIL_FRAC):
+    n = max(1, int(frac * rc.size))
+    return float(np.sort(rc)[:n].mean())
 
 def exact_knn(PCs, k=20, batch_size=100_000):
     # Exact k nearest neighbors (GPU brute force), self excluded.
@@ -109,7 +115,8 @@ for dataset_name in DATASETS:
 
         gt_cache = os.path.join(
             OUTPUT_DIR, f'knn_exact_{lib_name}_{dataset_name}.npz')
-        if os.path.exists(gt_cache):
+        if os.path.exists(gt_cache) and \
+                os.path.getmtime(gt_cache) > os.path.getmtime(pc_path):
             log(f'{tag} Loading cached exact KNN...')
             cached = np.load(gt_cache)
             gt_neighbors, valid = cached['gt_neighbors'], cached['valid']
@@ -151,7 +158,8 @@ for dataset_name in DATASETS:
             mean=float(rc.mean()),
             min=float(rc.min()),
             p5=float(np.quantile(rc, 0.05)),
-            p25=float(np.quantile(rc, 0.25))))
+            p25=float(np.quantile(rc, 0.25)),
+            cvar25=tail_mean(rc)))
 
         log(f'{tag} Recall@{K}: mean={rc.mean():.4f}, min={rc.min():.4f}')
 

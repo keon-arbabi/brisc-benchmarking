@@ -3,7 +3,7 @@ import numpy as np
 import polars as pl
 from pathlib import Path
 
-OUTPUT_DIR = f'{Path.home()}/sc-benchmarking/output'
+OUTPUT_DIR = f'{Path.home()}/brisc-benchmarking/output'
 DATASETS = ['SEAAD', 'Parse', 'PanSci']
 LIBRARIES = {
     'brisc': 'basic_brisc_{dataset}_-1_embedding.csv',
@@ -13,8 +13,8 @@ LIBRARIES = {
 }
 LABEL_COLS = ['cell_type', 'cell_type_broad']
 RESOLUTIONS = ['0.25', '0.5', '1.0', '1.5', '2.0']
-N_ITER = 10
-SEED = 0
+REP = 1
+MIN_CLUSTER_SIZE = 100
 
 def log(msg):
     print(msg, flush=True)
@@ -39,31 +39,31 @@ def fast_ari(a, b):
     return float((sum_c - expected) / (max_idx - expected)) \
         if max_idx != expected else 0.0
 
-def balanced_ari(it, ip, n_iter=10, seed=0):
-    rng = np.random.default_rng(seed)
-    classes, counts = np.unique(it, return_counts=True)
-    n_per = int(counts.min())
-    sort_idx = np.argsort(it, kind='stable')
-    starts = np.zeros(len(classes) + 1, dtype=np.int64)
-    np.cumsum(counts, out=starts[1:])
-
-    scores = np.empty(n_iter, dtype=np.float64)
-    for i in range(n_iter):
-        chunks = [
-            rng.choice(sort_idx[starts[k]:starts[k + 1]],
-                       size=n_per, replace=False)
-            for k in range(len(classes))
-        ]
-        idx = np.concatenate(chunks)
-        scores[i] = fast_ari(it[idx], ip[idx])
-    return float(scores.mean()), float(scores.std()), n_per
+def balanced_ari(it, ip):
+    # Balanced ARI of Maan et al. 2024 (Nat Biotechnol, doi 10/gtb3zf;
+    # github.com/hsmaan/balanced-clustering): each row of the contingency
+    # table is rescaled so every class contributes equally while the total
+    # count is preserved, then the standard ARI is computed from it.
+    n = it.shape[0]
+    na, nb = int(it.max()) + 1, int(ip.max()) + 1
+    c = np.bincount(it.astype(np.int64) * nb + ip.astype(np.int64),
+                    minlength=na * nb).reshape(na, nb).astype(np.float64)
+    c = (c * (round(c.sum(1).mean()) / c.sum(1))[:, None]).astype(np.int64)
+    sq = int((c ** 2).sum())
+    tp = sq - n
+    fp = int((c * c.sum(0)).sum()) - sq
+    fn = int((c * c.sum(1)[:, None]).sum()) - sq
+    tn = n ** 2 - fp - fn - sq
+    return float(2 * (tp * tn - fn * fp) /
+                 ((tp + fn) * (fn + tn) + (tp + fp) * (fp + tn)))
 
 all_summary_rows = []
+rep_dir = os.path.join(OUTPUT_DIR, f'rep{REP}')
 
 for dataset_name in DATASETS:
     for lib_name, fname in LIBRARIES.items():
         path = os.path.join(
-            OUTPUT_DIR, fname.format(dataset=dataset_name))
+            rep_dir, fname.format(dataset=dataset_name))
         if not os.path.exists(path):
             log(f'[{dataset_name}/{lib_name}] Embedding not found: {path}')
             continue
@@ -78,27 +78,31 @@ for dataset_name in DATASETS:
             for res in RESOLUTIONS:
                 ip = encode(df[f'cluster_res_{res}'].to_numpy())
                 n_clusters = int(ip.max()) + 1
+                cluster_sizes = np.bincount(ip, minlength=n_clusters)
+                n_singletons = int((cluster_sizes == 1).sum())
+                n_clusters_big = int(
+                    (cluster_sizes >= MIN_CLUSTER_SIZE).sum())
                 ari = fast_ari(it, ip)
-                bari, bari_std, n_per = balanced_ari(
-                    it, ip, n_iter=N_ITER, seed=SEED)
+                bari = balanced_ari(it, ip)
 
-                all_summary_rows.append(dict(
-                    method=lib_name,
-                    dataset=dataset_name,
-                    label=label_col,
-                    resolution=float(res),
-                    n_classes=n_classes,
-                    n_clusters=n_clusters,
-                    n_per_class=n_per,
-                    ari=ari,
-                    balanced_ari=bari,
-                    balanced_ari_std=bari_std))
+                all_summary_rows.append({
+                    'method': lib_name,
+                    'dataset': dataset_name,
+                    'label': label_col,
+                    'resolution': float(res),
+                    'n_classes': n_classes,
+                    'n_clusters': n_clusters,
+                    'n_singletons': n_singletons,
+                    f'n_clusters_ge_{MIN_CLUSTER_SIZE}': n_clusters_big,
+                    'ari': ari,
+                    'balanced_ari': bari})
 
                 log(f'[{dataset_name}/{lib_name}] {label_col} '
                     f'res={res}: ARI={ari:.4f}, '
-                    f'balanced ARI={bari:.4f}+/-{bari_std:.4f} '
+                    f'balanced ARI={bari:.4f} '
                     f'(n_classes={n_classes}, n_clusters={n_clusters}, '
-                    f'n_per_class={n_per})')
+                    f'n_singletons={n_singletons}, '
+                    f'n_clusters>={MIN_CLUSTER_SIZE}: {n_clusters_big})')
 
 if all_summary_rows:
     out_path = f'{OUTPUT_DIR}/cluster_ari_summary.csv'

@@ -2,7 +2,7 @@ import os
 import sys
 import polars as pl
 from pathlib import Path
-sys.path.append(f'{Path.home()}/sc-benchmarking')
+sys.path.append(f'{Path.home()}/brisc-benchmarking')
 from brisc import SingleCell
 from utils_local import MemoryTimer, system_info, remove_self_neighbors
 
@@ -14,6 +14,8 @@ OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_EMBEDDING = sys.argv[5]
 OUTPUT_PATH_PCS = sys.argv[6]
 OUTPUT_PATH_NEIGHBORS = sys.argv[7]
+OUTPUT_PATH_HVGS = sys.argv[8]
+OUTPUT_PATH_MARKERS = sys.argv[9]
 REP = int(sys.argv[-1])
 
 if __name__ == '__main__':
@@ -68,10 +70,23 @@ if __name__ == '__main__':
                 hogwild=True, embedding_key='umap_hogwild')
 
     with timers('Find markers'):
-        markers = data.find_markers('cell_type')
+        markers = data.find_markers('cell_type', all_genes=True)
 
     data = data.drop_X()
     data = data.filter_obs('passed_QC')
+
+    # Save markers
+    markers\
+        .sort('cell_type', 'fold_change', descending=[False, True])\
+        .with_columns(rank=pl.int_range(1, pl.len() + 1).over('cell_type'))\
+        .select('cell_type', 'gene', 'rank', 'marker', 'detection_rate',
+                'fold_change')\
+        .write_parquet(OUTPUT_PATH_MARKERS)
+
+    # Save HVGs
+    pl.DataFrame({
+        'gene': data.var_names.filter(data.var['highly_variable'])
+    }).write_csv(OUTPUT_PATH_HVGS)
 
     # Save PCs
     pcs = data.obsm['pca']
