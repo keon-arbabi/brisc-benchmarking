@@ -54,12 +54,12 @@ if __name__ == '__main__':
     with timers('Clustering'):
         data = data.cluster(resolution=[0.25, 0.5, 1.0, 1.5, 2.0])
 
-    with timers('Embedding (PaCMAP)'):
-        data = data.pacmap()
+    with timers('Embedding (LocalMAP)'):
+        data = data.localmap()
 
     if not GPU:
-        with timers('Embedding (LocalMAP)', exclude=True):
-            data = data.localmap()
+        with timers('Embedding (PaCMAP)', exclude=True):
+            data = data.pacmap()
 
     if not GPU and NUM_THREADS != 1:
         with timers('Embedding (UMAP)', exclude=True):

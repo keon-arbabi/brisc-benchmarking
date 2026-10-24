@@ -402,6 +402,7 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 f'export OMP_PROC_BIND=spread\n'
                 f'export NUMBA_NUM_THREADS=${{SLURM_CPUS_ON_NODE:-$(nproc)}}\n'
                 f'export NUMBA_CACHE_DIR=${{SCRATCH:-/scratch/$USER}}/.cache/numba\n'
+                f'export PYTHONFAULTHANDLER=1\n'
                 f'export HDF5_USE_FILE_LOCKING=FALSE\n'
                 f'set -m\n'
                 f'{cmd} &\n'

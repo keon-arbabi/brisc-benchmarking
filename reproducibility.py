@@ -14,8 +14,8 @@ RESOLUTION = '1.0'
 EMBED_KNN_K = 15  # neighbourhood size for embedding-space overlap
 
 CONFIGS = {
-    'brisc_mt': ('basic_brisc_{ds}_-1_', ('pacmap_1', 'pacmap_2')),
-    'brisc_st': ('basic_brisc_{ds}_1_', ('pacmap_1', 'pacmap_2')),
+    'brisc_mt': ('basic_brisc_{ds}_-1_', ('localmap_1', 'localmap_2')),
+    'brisc_st': ('basic_brisc_{ds}_1_', ('localmap_1', 'localmap_2')),
     'scanpy': ('basic_scanpy_{ds}_', ('embed_1', 'embed_2')),
     'seurat': ('basic_seurat_{ds}_', ('embed_1', 'embed_2')),
     'rapids': ('basic_rapids_{ds}_gpu_', ('embed_1', 'embed_2')),

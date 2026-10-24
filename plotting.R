@@ -122,9 +122,9 @@ results <- list.files(file.path(work_dir, "output"), "_timer\\.csv$",
 prepared <- results %>%
   filter(library != "brisc" |
            !str_detect(operation, "^Embedding \\(") |
-           operation == "Embedding (PaCMAP)") %>%
+           operation == "Embedding (LocalMAP)") %>%
   mutate(
-    operation = if_else(operation == "Embedding (PaCMAP)", "Embedding",
+    operation = if_else(operation == "Embedding (LocalMAP)", "Embedding",
                         operation),
     workflow = recode(test, manipulation = "commands") %>%
       factor(levels = c(names(wf_lab), "commands")),
@@ -589,11 +589,11 @@ embed_paths <- c(brisc  = "basic_brisc_%s_-1_embedding.csv",
 
 panel_spec <- tibble(
   lib = c(rep("brisc", 4), "scanpy", "seurat", "rapids"),
-  method = c("PaCMAP", "LocalMAP", "UMAP", "UMAP hogwild", rep("UMAP", 3)),
-  col1 = c("pacmap_1", "localmap_1", "umap_1", "umap_hogwild_1",
+  method = c("LocalMAP", "PaCMAP", "UMAP", "UMAP hogwild", rep("UMAP", 3)),
+  col1 = c("localmap_1", "pacmap_1", "umap_1", "umap_hogwild_1",
            rep("embed_1", 3)),
   col2 = str_replace(col1, "_1$", "_2"),
-  op = c("Embedding (PaCMAP)", "Embedding (LocalMAP)", "Embedding (UMAP)",
+  op = c("Embedding (LocalMAP)", "Embedding (PaCMAP)", "Embedding (UMAP)",
          "Embedding (UMAP hogwild)", rep("Embedding", 3)))
 
 embed_time <- function(lib_val, op_val, ds_val) {
