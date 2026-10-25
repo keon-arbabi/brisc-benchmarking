@@ -60,6 +60,7 @@ op_order <- list(
 
 op_wrap <- c(
   "Clustering"                      = "Cluster\n(5 resolutions)",
+  "Transfer labels"                 = "Harmonization and\nlabel transfer",
   "Get expression by cell"          = "Get expression\nby cell",
   "Get expression by gene"          = "Get expression\nby gene",
   "Subset to one cell type"         = "Subset to one\ncell type",
