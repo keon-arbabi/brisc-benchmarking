@@ -15,7 +15,7 @@ font <- "Arial"
 
 datasets <- c("SEAAD", "Parse", "PanSci")
 ds_lab <- c(SEAAD = "1.4M cells (SEA-AD)",
-            Parse = "9.7M cells (Parse PBMC)",
+            Parse = "9.7M cells (Parse)",
             PanSci = "20.3M cells (PanSci)")
 ds_unit <- c(SEAAD = "s", Parse = "h", PanSci = "m")
 ds_div <- c(SEAAD = 1, Parse = 3600, PanSci = 60)
